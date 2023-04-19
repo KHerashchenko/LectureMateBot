@@ -24,12 +24,11 @@ Globals:
       Role: !Ref CodeDeployRole
 
 Resources:
-  HelloWorld:
+  BotAPIFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'awscodestar-${ProjectId}-lambda-HelloWorld'
       Handler: index.handler
-      Runtime: python3.7
+      Runtime: python3.9
       Role:
         Fn::GetAtt:
         - LambdaExecutionRole
@@ -45,11 +44,15 @@ Resources:
           Properties:
             Path: /
             Method: post
-  LambdaExecutionRole:
+      CodeUri: lambda-func/
+      Timeout: 60
+      Layers:
+        - !Ref PythonBaseLayer
+
+  BotAPIFunctionExecutionRole:
     Description: Creating service role in IAM for AWS Lambda
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'CodeStar-${ProjectId}-Execution${Stage}'
       AssumeRolePolicyDocument:
         Statement:
         - Effect: Allow
@@ -60,3 +63,38 @@ Resources:
       ManagedPolicyArns:
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       PermissionsBoundary: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/CodeStar_${ProjectId}_PermissionsBoundary'
+      Policies:
+      - PolicyName: AllowDescribeSecret
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: secretsmanager:DescribeSecret
+            Resource: arn:aws:secretsmanager:eu-north-1:698534389290:secret:TelegramBotToken*
+
+  PythonBaseLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      RetentionPolicy: Retain
+      Description: Creating layer with Python requirements for AWS Lambda
+      ContentUri: python-layers/
+    Metadata:
+      BuildMethod: python3.9
+
+  PythonBaseLayerPermission:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn: !Ref PythonBaseLayer
+      Principal: !Ref AWS::AccountId
+
+Outputs:
+  PythonBaseArn:
+    Description: "Layer Version ARN for python base"
+    Value: !Ref PythonBaseLayer
+  BotAPIFunction:
+    Description: "Bot API Lambda Function ARN"
+    Value: !GetAtt BotAPIFunction.Arn
+  BotAPIFunctionRole:
+    Description: "Implicit IAM Role created for Bot API function"
+    Value: !GetAtt BotAPIFunctionRole.Arn
