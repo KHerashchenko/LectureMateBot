@@ -31,7 +31,7 @@ Resources:
       Runtime: python3.9
       Role:
         Fn::GetAtt:
-        - LambdaExecutionRole
+        - BotAPIFunctionExecutionRole
         - Arn
       Events:
         GetEvent:
