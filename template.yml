@@ -27,8 +27,12 @@ Resources:
   BotAPIFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: lambda-func/
       Handler: index.handler
       Runtime: python3.9
+      Timeout: 60
+      Layers:
+        - !Ref PythonBaseLayer
       Role:
         Fn::GetAtt:
         - BotAPIFunctionRole
@@ -44,10 +48,6 @@ Resources:
           Properties:
             Path: /
             Method: post
-      CodeUri: lambda-func/
-      Timeout: 60
-      Layers:
-        - !Ref PythonBaseLayer
 
   BotAPIFunctionRole:
     Description: Creating service role in IAM for AWS Lambda
@@ -82,15 +82,15 @@ Resources:
       BuildMethod: python3.9
 
   PythonBaseLayerPermission:
-    Type: AWS::Lambda::LayerVersionPermission
+    Type: "AWS::Lambda::LayerVersionPermission"
     Properties:
       Action: lambda:GetLayerVersion
       LayerVersionArn: !Ref PythonBaseLayer
       Principal: !Ref AWS::AccountId
 
 Outputs:
-  PythonBaseLayerArn:
-    Description: "Layer Version ARN for python base"
+  PythonBaseArn:
+    Description: Layer Version ARN for python base
     Value: !Ref PythonBaseLayer
   BotAPIFunction:
     Description: "Bot API Lambda Function ARN"
