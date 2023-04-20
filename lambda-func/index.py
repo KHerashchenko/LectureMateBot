@@ -18,8 +18,8 @@ bot = telebot.TeleBot(secret, threaded=False)
 
 def process_event(event):
     # Get telegram webhook json from event
-    # request_body_dict = json.loads(event['body'])
-    request_body_dict = json.dumps(event['body'])
+    request_body_dict = json.loads(event['body'])
+    # request_body_dict = json.dumps(event['body'])
     # Parse updates from json
     update = telebot.types.Update.de_json(request_body_dict)
     # Run handlers and etc for updates
