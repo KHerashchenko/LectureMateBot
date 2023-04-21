@@ -3,3 +3,5 @@ aws_secretsmanager_caching==1.1.1.5
 pyTelegramBotAPI==4.11.0
 openai==0.27.2
 simplejson~=3.19.1
+pyrate-limiter==2.10.0
+tiktoken==0.3.3

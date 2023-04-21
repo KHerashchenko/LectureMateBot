@@ -4,6 +4,7 @@ import openai
 import botocore.session
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
+from summary import summarize
 
 tg_bot_token_secret_name = "TelegramBotToken"
 openai_key_secret_name = "OpenAISecretKey"
@@ -52,9 +53,25 @@ def send_transcript(message):
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_youtube_video_link)
     print('here 3')
 
+@bot.message_handler(commands=['summarize_video'])
+def send_summarization(message):
+    bot.reply_to(message, "Please provide youtube video link for summarization")
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_youtube_video_link)
+
+def process_summarization(message):
+    url = message.text
+    try:
+        title, author = retrieve_metadata(url)
+    except:
+        bot.reply_to(message, "Invalid youtube video link")
+        return
+
+    transcript, no_of_words, filename = generate_transcript(url)
+    bot.send_message(message.chat.id, f"Summarizing\n Title: {title}\nAuthor: {author}\nVideo transcript:")
+    summarization = summarize(transcript)
+    bot.send_document(message.chat.id, summarization)
 
 def process_youtube_video_link(message):
-    print('here 1')
     url = message.text
     try:
         title, author = retrieve_metadata(url)
