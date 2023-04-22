@@ -1,1 +1,4 @@
 /.aws-sam/
+env/
+packaged-template.yaml
+samconfig.toml

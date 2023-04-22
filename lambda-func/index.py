@@ -56,7 +56,7 @@ def send_transcript(message):
 @bot.message_handler(commands=['summarize_video'])
 def send_summarization(message):
     bot.reply_to(message, "Please provide youtube video link for summarization")
-    bot.register_next_step_handler_by_chat_id(message.chat.id, process_youtube_video_link)
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_summarization)
 
 def process_summarization(message):
     url = message.text
@@ -67,9 +67,9 @@ def process_summarization(message):
         return
 
     transcript, no_of_words, filename = generate_transcript(url)
-    bot.send_message(message.chat.id, f"Summarizing\n Title: {title}\nAuthor: {author}\nVideo transcript:")
+    bot.send_message(message.chat.id, f"Summarizing\n Title: {title}\nAuthor: {author}\nVideo summarization:")
     summarization = summarize(transcript)
-    bot.send_document(message.chat.id, summarization)
+    bot.send_message(message.chat.id, summarization)
 
 def process_youtube_video_link(message):
     url = message.text
