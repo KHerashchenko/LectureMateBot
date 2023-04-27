@@ -1,5 +1,6 @@
 import json
 import telebot
+import re
 import openai
 import botocore.session
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
@@ -9,6 +10,8 @@ from summary import summarize
 tg_bot_token_secret_name = "TelegramBotToken"
 openai_key_secret_name = "OpenAISecretKey"
 region_name = "eu-north-1"
+
+youtube_video_id_regexp = "^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*"
 
 client = botocore.session.get_session().create_client('secretsmanager')
 cache_config = SecretCacheConfig()
@@ -48,41 +51,15 @@ def send_welcome(message):
 # Handle '/get_transcript'
 @bot.message_handler(commands=['get_transcript'])
 def send_transcript(message):
-    bot.reply_to(message, "Please provide youtube video link")
-    print('here 2')
+    bot.reply_to(message, "Please provide youtube video link for transcription.")
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_youtube_video_link)
-    print('here 3')
 
+
+# Handle '/summarize_video'
 @bot.message_handler(commands=['summarize_video'])
 def send_summarization(message):
-    bot.reply_to(message, "Please provide youtube video link for summarization")
+    bot.reply_to(message, "Please provide youtube video link for summarization.")
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_summarization)
-
-def process_summarization(message):
-    url = message.text
-    try:
-        title, author = retrieve_metadata(url)
-    except:
-        bot.reply_to(message, "Invalid youtube video link")
-        return
-
-    transcript, no_of_words, filename = generate_transcript(url)
-    bot.send_message(message.chat.id, f"Summarizing\n Title: {title}\nAuthor: {author}\nVideo summarization:")
-    summarization = summarize(transcript)
-    bot.send_message(message.chat.id, summarization)
-
-def process_youtube_video_link(message):
-    url = message.text
-    try:
-        title, author = retrieve_metadata(url)
-    except:
-        bot.reply_to(message, "Invalid youtube video link")
-        return
-
-    transcript, no_of_words, filename = generate_transcript(url)
-    doc = open(filename, 'rb')
-    bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo transcript:")
-    bot.send_document(message.chat.id, doc)
 
 
 # Handle all other messages
@@ -90,3 +67,51 @@ def process_youtube_video_link(message):
 def send_response_from_openapi(message):
     response = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": message.text}])
     bot.reply_to(message, response.choices[0].message.content)
+
+
+def process_summarization(message):
+    url = message.text
+    try:
+        video_id = re.findall(youtube_video_id_regexp, url)[0]
+    except Exception as e:
+        bot.reply_to(message, f"Youtube video link could not be processed.\nError: {e}")
+        return
+
+    title, author = retrieve_metadata(video_id)
+
+    transcript_result = generate_transcript(video_id)
+    if not transcript_result:
+        bot.send_message(message.chat.id, f"Transcript could not be retrieved from provided link.")
+        return
+    else:
+        transcript, no_of_words, filename = transcript_result
+
+    try:
+        summarization = summarize(transcript)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Summary could not be generated for given transcript.\nError:{e}")
+        return
+
+    bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo summary:")
+    bot.send_message(message.chat.id, summarization)
+
+
+def process_youtube_video_link(message):
+    url = message.text
+    try:
+        video_id = re.findall(youtube_video_id_regexp, url)[0]
+    except Exception as e:
+        bot.reply_to(message, f"Youtube video link could not be processed.\nError: {e}")
+        return
+
+    title, author = retrieve_metadata(video_id)
+    transcript_result = generate_transcript(video_id)
+    if not transcript_result:
+        bot.send_message(message.chat.id, f"Transcript could not be retrieved from provided link.")
+        return
+    else:
+        transcript, no_of_words, filename = transcript_result
+
+    doc = open(filename, 'rb')
+    bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo transcript:")
+    bot.send_document(message.chat.id, doc)
