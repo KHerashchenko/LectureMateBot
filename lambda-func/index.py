@@ -1,4 +1,6 @@
 import json
+
+import boto3
 import telebot
 import re
 import openai
@@ -10,12 +12,14 @@ from summary import summarize
 tg_bot_token_secret_name = "TelegramBotToken"
 openai_key_secret_name = "OpenAISecretKey"
 region_name = "eu-north-1"
-
 youtube_video_id_regexp = "^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*"
 
-client = botocore.session.get_session().create_client('secretsmanager')
+session = boto3.session.Session()  # create a session object
+dynamodb_client = session.client('dynamodb')  # create a client for dynamodb
+secrets_manager_client = session.client('secretsmanager')  # create a client for secrets manager
+
 cache_config = SecretCacheConfig()
-cache = SecretCache( config = cache_config, client = client)
+cache = SecretCache(config=cache_config, client=secrets_manager_client)
 
 tg_bot_secret = cache.get_secret_string(tg_bot_token_secret_name)
 bot = telebot.TeleBot(tg_bot_secret, threaded=False)
@@ -33,6 +37,21 @@ def process_event(event):
 
 
 def handler(event, context):
+    data = dynamodb_client.put_item(
+        TableName='UsersTable',
+        Item={
+            'chat_id': {
+                'N': '001'
+            },
+            'video_id': {
+                'S': 'FE87YF8'
+            },
+            'username': {
+                'S': 'my_user'
+            }
+        }
+    )
+
     # Process event from aws and respond
     process_event(event)
     return {
