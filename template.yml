@@ -40,6 +40,49 @@ Resources:
           Properties:
             Path: /
             Method: post
+    Policy:
+      - PolicyName: AllowDynamDBCrud
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:BatchGetItem
+                - dynamodb:BatchWriteItem
+              Resource:
+                - !GetAtt VideosTable.Arn
+                - !GetAtt UsersTable.Arn
+        Environment:
+          Variables:
+            VIDEOS_NAME: !Ref VideosTable
+            USERS_NAME: !Ref UsersTable
+
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: chat_id
+          AttributeType: N
+      KeySchema:
+        - AttributeName: chat_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  VideosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: video_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: video_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
 
   BotAPIFunctionRole:
     Description: Creating service role in IAM for AWS Lambda

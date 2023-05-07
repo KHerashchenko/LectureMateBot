@@ -1,23 +1,28 @@
 import json
+
+import boto3
 import telebot
 import re
 import openai
-import botocore.session
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
+from dynamodb_handler import update_video_item, update_user_item, add_video_to_user
 from summary import summarize
 
 tg_bot_token_secret_name = "TelegramBotToken"
 openai_key_secret_name = "OpenAISecretKey"
 region_name = "eu-north-1"
-
 youtube_video_id_regexp = "^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*"
 
-client = botocore.session.get_session().create_client('secretsmanager')
+session = boto3.session.Session()  # create a session object
+dynamodb_client = session.client('dynamodb')  # create a client for dynamodb
+secrets_manager_client = session.client('secretsmanager')  # create a client for secrets manager
+
 cache_config = SecretCacheConfig()
-cache = SecretCache( config = cache_config, client = client)
+cache = SecretCache(config=cache_config, client=secrets_manager_client)
 
 tg_bot_secret = cache.get_secret_string(tg_bot_token_secret_name)
+
 bot = telebot.TeleBot(tg_bot_secret, threaded=False)
 
 openai.api_key = cache.get_secret_string(openai_key_secret_name)
@@ -28,6 +33,7 @@ def process_event(event):
     request_body_dict = json.loads(event['body'])
     # Parse updates from json
     update = telebot.types.Update.de_json(request_body_dict)
+    update_user_item(dynamodb_client, chat_id=request_body_dict['message']['chat']['id'], username=request_body_dict['message']['chat']['username'])
     # Run handlers and etc for updates
     bot.process_new_updates([update])
 
@@ -44,8 +50,8 @@ def handler(event, context):
 @bot.message_handler(commands=['help', 'start'])
 def send_welcome(message):
     bot.reply_to(message,
-                 ("Hi there, I am OpenAI bot.\n"
-                  "I am here to burn your free tier credits."))
+                 ("Hi there, I am LectureMate bot.\n"
+                  "I am here to burn your credits. Please provide your OpenAI key. (not working now)"))
 
 
 # Handle '/get_transcript'
@@ -92,6 +98,9 @@ def process_summarization(message):
         bot.send_message(message.chat.id, f"Summary could not be generated for given transcript.\nError:{e}")
         return
 
+    update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url=url)
+    add_video_to_user(message.chat.id, video_id)
+
     bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo summary:")
     bot.send_message(message.chat.id, summarization)
 
@@ -111,6 +120,9 @@ def process_youtube_video_link(message):
         return
     else:
         transcript, no_of_words, filename = transcript_result
+
+    update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url=url)
+    add_video_to_user(dynamodb_client, message.chat.id, video_id)
 
     doc = open(filename, 'rb')
     bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo transcript:")
