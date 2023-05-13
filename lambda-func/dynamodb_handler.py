@@ -14,9 +14,10 @@ def retrieve_user_videos(client, chat_id):
     )
     if not videos_resp['Item']:
         videos_list = []
+        return videos_list
     else:
         videos_list = videos_resp['Item']['videos']
-
+        
     print(videos_list)
     user_videos = []
     for vid in videos_list['L']:
@@ -31,7 +32,7 @@ def retrieve_user_videos(client, chat_id):
         for attr, val_dict in vid_info_resp['Item'].items():
             vid_info[attr] = list(val_dict.values())[0]
         user_videos.append(vid_info)
-
+        
     return user_videos
 
 

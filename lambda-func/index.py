@@ -35,8 +35,15 @@ def process_event(event):
     request_body_dict = json.loads(event['body'])
     # Parse updates from json
     update = telebot.types.Update.de_json(request_body_dict)
-    update_user_item(dynamodb_client, chat_id=request_body_dict['message']['chat']['id'], username=request_body_dict['message']['chat']['username'])
-    encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict['message']['chat']['id'])
+    
+    if('message' in request_body_dict):
+        message_type = 'message'
+    elif('edited_message' in request_body_dict):
+        message_type = 'edited_message'
+    
+    update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
+    encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
+    
     if encrypted_openai_creds:
         openai_creds = decrypt_key(kms_client, kms_key_id, encrypted_openai_creds)
     else:
@@ -90,8 +97,7 @@ def register_openai_user_key(message):
         models = openai.Model.list()
     except openai.error.AuthenticationError:
         bot.reply_to(message, "Provided OpenAI key is invalid.")
-        return
-
+        return 
     encrypted_openai_key = encrypt_key(kms_client, kms_key_id, message.text)
     update_user_item(dynamodb_client, chat_id=message.chat.id, openai_key=encrypted_openai_key)
     bot.reply_to(message, "Your OpenAI key saved.")
