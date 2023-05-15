@@ -1,14 +1,16 @@
 import json
-
 import boto3
 import telebot
 import re
 import openai
+import asyncio
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
 from user_creds_handler import encrypt_key, decrypt_key
 from dynamodb_handler import update_video_item, update_user_item, add_video_to_user, retrieve_user_openai_creds, retrieve_user_videos
 from summary import summarize
+from chat_utils import ask, upsert
+
 
 tg_bot_token_secret_name = "TelegramBotToken"
 openai_key_secret_name = "OpenAISecretKey"
@@ -164,11 +166,46 @@ def process_summarization(message):
         bot.send_message(message.chat.id, f"Summary could not be generated for given transcript.\nError:{e}")
         return
 
+    print("video id: ", video_id)
     update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
-    add_video_to_user(message.chat.id, video_id)
+    add_video_to_user(dynamodb_client, message.chat.id, video_id)
 
     bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo summary:")
     bot.send_message(message.chat.id, summarization)
+
+
+
+# Handle '/ask_question'
+@bot.message_handler(commands=['ask_question'])
+def ask_question(message):
+    bot.reply_to(message, "What is your question from the lecture?")
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_question)
+
+
+def process_question(message):
+    try:
+        loop_ask = asyncio.get_event_loop()
+        response = loop_ask.run_until_complete(ask(message.text))
+        bot.reply_to(message, response)
+    except Exception as e:
+        bot.reply_to(message, f"Couldn't connect to database.\nError: {e}")
+        return
+    
+# Handle '/upsert_text'
+@bot.message_handler(commands=['upsert_text'])
+def upsert_text(message):
+    bot.reply_to(message, "What text do you want to upsert?")
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_text)
+
+
+def process_text(message):
+    try:
+        loop_ask = asyncio.get_event_loop()
+        response = loop_ask.run_until_complete(upsert(message.text.split()[0], message.text))
+        bot.reply_to(message, "Text starting with: " + str(response) + " upserted")
+    except Exception as e:
+        bot.reply_to(message, f"Couldn't connect to database.\nError: {e}")
+        return
 
 
 # Handle all other messages
