@@ -8,7 +8,7 @@ from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
 from user_creds_handler import encrypt_key, decrypt_key
 from dynamodb_handler import update_video_item, update_user_item, add_video_to_user, retrieve_user_openai_creds, retrieve_user_videos
-from summary import summarize
+from summary import generate_summary_pdf
 from chat_utils import ask, upsert
 
 
@@ -43,7 +43,8 @@ def process_event(event):
     elif('edited_message' in request_body_dict):
         message_type = 'edited_message'
     
-    update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
+    print(request_body_dict)
+    update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['id'])
     encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
     
     if encrypted_openai_creds:
@@ -160,18 +161,13 @@ def process_summarization(message):
     else:
         transcript, no_of_words, filename = transcript_result
 
-    try:
-        summarization = summarize(transcript)
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Summary could not be generated for given transcript.\nError:{e}")
-        return
+    print('START PDF SUMMARY')
+    pdf_path = generate_summary_pdf(transcript, video_id)
+    doc = open(pdf_path, 'rb')
+    bot.send_document(message.chat.id, doc)
 
-    print("video id: ", video_id)
     update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
     add_video_to_user(dynamodb_client, message.chat.id, video_id)
-
-    bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo summary:")
-    bot.send_message(message.chat.id, summarization)
 
 
 
@@ -209,7 +205,7 @@ def process_text(message):
 
 
 # Handle all other messages
-@bot.message_handler(func=lambda message: True, content_types=['text'])
+@bot.message_handler(func=lambda message: not re.match(youtube_video_id_regexp, message.text), content_types=['text'])
 def send_response_from_openapi(message):
     response = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": message.text}])
     bot.reply_to(message, response.choices[0].message.content)

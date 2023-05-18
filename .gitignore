@@ -2,3 +2,4 @@
 env/
 packaged-template.yaml
 samconfig.toml
+packages
