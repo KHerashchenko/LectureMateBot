@@ -7,6 +7,7 @@ import asyncio
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
 from user_creds_handler import encrypt_key, decrypt_key
+from s3_storage_handler import upload_file_to_s3, download_file_from_s3
 from dynamodb_handler import update_video_item, update_user_item, add_video_to_user, retrieve_user_openai_creds, retrieve_user_videos
 from summary import generate_summary_pdf
 from chat_utils import ask, upsert
@@ -22,6 +23,7 @@ session = boto3.session.Session()  # create a session object
 dynamodb_client = session.client('dynamodb')  # create a client for dynamodb
 secrets_manager_client = session.client('secretsmanager')  # create a client for secrets manager
 kms_client = boto3.client('kms')  # create a client for kms
+s3_client = boto3.client('s3')  # create a client for s3
 
 cache_config = SecretCacheConfig()
 cache = SecretCache(config=cache_config, client=secrets_manager_client)
@@ -44,7 +46,10 @@ def process_event(event):
         message_type = 'edited_message'
     
     print(request_body_dict)
-    update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['id'])
+    try:
+        update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
+    except:
+        update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'])
     encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
     
     if encrypted_openai_creds:
@@ -71,6 +76,7 @@ def send_welcome(message):
     bot.reply_to(message,
                  ("Hi there, I am LectureMate bot.\n"
                   "Please provide your OpenAI key, otherwise we will go broke."))
+
 
 # Handle '/list_my_videos'
 @bot.message_handler(commands=['list_my_videos'])
@@ -122,17 +128,25 @@ def process_transcript(message):
         return
 
     title, author = retrieve_metadata(video_id)
-    transcript_result = generate_transcript(video_id)
-    if not transcript_result:
-        bot.send_message(message.chat.id, f"Transcript could not be retrieved from provided link.")
-        return
-    else:
-        transcript, no_of_words, filename = transcript_result
+
+    try:
+        file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt')
+        print(f'File transcript_{video_id}.txt found in bucket. Skip generating.')
+    except Exception as e:
+        print(e)
+        print(f'No file transcript_{video_id}.txt found in bucket. Start generating.')
+        transcript_result = generate_transcript(video_id)
+        if not transcript_result:
+            print(f"Transcript could not be retrieved from provided link.")
+            return
+        else:
+            file_path = transcript_result
+        upload_file_to_s3(s3_client, file_path, video_id)
 
     update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
     add_video_to_user(dynamodb_client, message.chat.id, video_id)
 
-    doc = open(filename, 'rb')
+    doc = open(file_path, 'rb')
     bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo transcript:")
     bot.send_document(message.chat.id, doc)
 
@@ -154,21 +168,36 @@ def process_summarization(message):
 
     title, author = retrieve_metadata(video_id)
 
-    transcript_result = generate_transcript(video_id)
-    if not transcript_result:
-        bot.send_message(message.chat.id, f"Transcript could not be retrieved from provided link.")
-        return
-    else:
-        transcript, no_of_words, filename = transcript_result
+    try:
+        pdf_path = download_file_from_s3(s3_client, video_id, f'summary_{video_id}.pdf')
+        print(f'File summary_{video_id}.pdf found in bucket. Skip generating.')
+    except Exception as e:
+        print(f'No file summary_{video_id}.pdf found in bucket. Start generating.')
+        try:
+            file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt')
+        except Exception as e:
+            print(e)
+            print(f'No file transcript_{video_id}.txt found in bucket. Start generating.')
+            transcript_result = generate_transcript(video_id)
+            if not transcript_result:
+                print(f"Transcript could not be retrieved from provided link.")
+                return
+            else:
+                file_path = transcript_result
+            upload_file_to_s3(s3_client, file_path, video_id)
 
-    print('START PDF SUMMARY')
-    pdf_path = generate_summary_pdf(transcript, video_id)
-    doc = open(pdf_path, 'rb')
-    bot.send_document(message.chat.id, doc)
+        print('START PDF SUMMARY')
+        bot.send_message(message.chat.id, f"Summarization may take some time, please bear with us.")
+        with open(file_path, "r") as file:
+            transcript = file.read()
+        pdf_path = generate_summary_pdf(transcript, video_id)
+        upload_file_to_s3(s3_client, pdf_path, video_id)
 
     update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
     add_video_to_user(dynamodb_client, message.chat.id, video_id)
 
+    doc = open(pdf_path, 'rb')
+    bot.send_document(message.chat.id, doc)
 
 
 # Handle '/ask_question'
@@ -184,9 +213,11 @@ def process_question(message):
         response = loop_ask.run_until_complete(ask(message.text))
         bot.reply_to(message, response)
     except Exception as e:
-        bot.reply_to(message, f"Couldn't connect to database.\nError: {e}")
+        print(f"Couldn't connect to database.\nError: {e}")
+        bot.reply_to(message, "You broke the bot.")
         return
-    
+
+
 # Handle '/upsert_text'
 @bot.message_handler(commands=['upsert_text'])
 def upsert_text(message):
@@ -200,7 +231,8 @@ def process_text(message):
         response = loop_ask.run_until_complete(upsert(message.text.split()[0], message.text))
         bot.reply_to(message, "Text starting with: " + str(response) + " upserted")
     except Exception as e:
-        bot.reply_to(message, f"Couldn't connect to database.\nError: {e}")
+        print(f"Couldn't connect to database.\nError: {e}")
+        bot.reply_to(message, "You broke the bot.")
         return
 
 
