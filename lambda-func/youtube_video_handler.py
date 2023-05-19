@@ -32,4 +32,4 @@ def generate_transcript(video_id):
             full_transcript += t + " "
             f.write(t)
 
-    return full_transcript, len(full_transcript.split()), filename
+    return filename

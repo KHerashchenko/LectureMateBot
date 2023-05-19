@@ -23,6 +23,7 @@ Resources:
         Variables:
           VIDEOS_NAME: !Ref VideosTable
           USERS_NAME: !Ref UsersTable
+          BUCKET_NAME: !Ref DataStorageBucket
       CodeUri: lambda-func/
       Handler: index.handler
       Runtime: python3.9
@@ -61,6 +62,9 @@ Resources:
                 - !GetAtt VideosTable.Arn
                 - !GetAtt UsersTable.Arn
 
+  DataStorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
 
   UsersTable:
     Type: AWS::DynamoDB::Table
