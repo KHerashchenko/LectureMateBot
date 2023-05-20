@@ -77,8 +77,7 @@ def add_video_to_user(client, chat_id, video_id):
     else:
         videos_list = videos_resp['Item']['videos']
 
-
-    if video_id not in videos_list:
+    if {'S': video_id} not in videos_list['L']:
         data = client.update_item(
             TableName=users_table,
             Key={

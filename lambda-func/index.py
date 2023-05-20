@@ -1,6 +1,7 @@
 import json
 import boto3
 import telebot
+from telebot import types, formatting
 import re
 import openai
 import asyncio
@@ -39,19 +40,19 @@ def process_event(event):
     request_body_dict = json.loads(event['body'])
     # Parse updates from json
     update = telebot.types.Update.de_json(request_body_dict)
-    
+
     if('message' in request_body_dict):
         message_type = 'message'
     elif('edited_message' in request_body_dict):
         message_type = 'edited_message'
-    
+
     print(request_body_dict)
     try:
         update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
     except:
         update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'])
     encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
-    
+
     if encrypted_openai_creds:
         openai_creds = decrypt_key(kms_client, kms_key_id, encrypted_openai_creds)
     else:
@@ -70,27 +71,107 @@ def handler(event, context):
     }
 
 
-# Handle '/start' and '/help'
-@bot.message_handler(commands=['help', 'start'])
+# Handle '/start'
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message,
-                 ("Hi there, I am LectureMate bot.\n"
-                  "Please provide your OpenAI key, otherwise we will go broke."))
+    start_message = """
+Hi there! I'm LectureMate, your helpful bot.
+
+🔑 Please provide your OpenAI key, otherwise we will go broke.
+
+You can transcribe, summarize, and chat about YouTube videos here. You have your own library of videos. First, you should provide a YouTube video link to add a video to your library using the /add_video command.
+
+Once you have a video in the library, you can request the video transcript, summary, or ask questions about the video content.
+
+Use the /help command to get a list of all available commands and their descriptions.
+
+Let's get started! If you have any questions, feel free to ask.
+"""
+    bot.reply_to(message, start_message)
 
 
-# Handle '/list_my_videos'
-@bot.message_handler(commands=['list_my_videos'])
-def send_welcome(message):
+# Handle '/help'
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    help_message = """
+Hi there! I'm LectureMate, your helpful bot. Here's how you can make the most out of me:
+
+📚 Library Commands:
+- /add_video: Add a YouTube video to your library.
+- /show_my_library: View the list of videos in your library.
+
+🎥 Video Commands:
+- /get_summary: Get a summary of a video from your library.
+- /get_transcript: Get the transcript of a video from your library.
+
+💬 Chat Commands:
+- /start_chat: Start a conversation about the content of a video from your library.
+
+🔧 Utility Commands:
+- /provide_openai_key: Provide your own OpenAI key.
+- /help: Read the bot guide.
+- /exit: Exit the current command.
+
+Please note that some commands require you to have videos in your library. To add a video, use the /add_video command.
+
+Enjoy using LectureMate! If you have any questions, feel free to ask.
+"""
+    bot.reply_to(message, help_message)
+
+
+def return_videos_list_keyboard(message, next_step_func):
+    user_videos = retrieve_user_videos(dynamodb_client, message.chat.id)
+    if not user_videos:
+        bot.reply_to(message, "You haven't added any video yet. Please call /add_video first.")
+        return
+
+    markup = types.ReplyKeyboardMarkup()
+    for ind, vid_dict in reversed(list(enumerate(user_videos))):
+        video_info = f"\"{vid_dict['title']}\" by {vid_dict['author']} ({vid_dict['video_id']})"
+        itembtn = types.KeyboardButton(video_info)
+        markup.row(itembtn)
+    bot.send_message(message.chat.id, "List of your videos:", reply_markup=markup)
+    # Set the next step handler to handle the user's selection
+    bot.register_next_step_handler_by_chat_id(message.chat.id, next_step_func)
+
+
+# Handle '/show_my_library'
+@bot.message_handler(commands=['show_my_library'])
+def send_list_my_videos(message):
     user_videos = retrieve_user_videos(dynamodb_client, message.chat.id)
     if not user_videos:
         bot.reply_to(message, "You haven't requested any video yet.")
     else:
-        rendered_user_videos = 'List of videos you have provided earlier:\n'
-        for ind, vid_dict in enumerate(user_videos):
-            rendered_user_videos += str(ind + 1) + '. '
-            for k, v in vid_dict.items():
-                rendered_user_videos += f"{k}: {v}\n"
-        bot.reply_to(message, rendered_user_videos)
+        rendered_user_videos = '*List of videos you have provided earlier:*\n\n'
+        for ind, vid_dict in reversed(list(enumerate(user_videos))):
+            title = formatting.escape_markdown(vid_dict['title'])
+            author = formatting.escape_markdown(vid_dict['author'])
+            video_info = f"[URL]({vid_dict['url_link']}) \"{title}\" by {author}\n"
+            rendered_user_videos += video_info
+        bot.send_message(message.chat.id, rendered_user_videos, parse_mode='MarkdownV2')
+
+
+# Handle '/add_video'
+@bot.message_handler(commands=['add_video'])
+def provide_openai_key(message):
+    bot.reply_to(message, "Please provide youtube video link.")
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_add_video)
+
+
+def process_add_video(message):
+    url = message.text
+    try:
+        video_id = re.findall(youtube_video_id_regexp, url)[0]
+    except Exception as e:
+        bot.reply_to(message, f"Youtube video link could not be processed.\nError: {e}")
+        return
+
+    title, author = retrieve_metadata(video_id)
+
+    update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
+    add_video_to_user(dynamodb_client, message.chat.id, video_id)
+
+    bot.reply_to(message, "Video added to your library.")
 
 
 # Handle '/provide_openai_key'
@@ -106,7 +187,7 @@ def register_openai_user_key(message):
         models = openai.Model.list()
     except openai.error.AuthenticationError:
         bot.reply_to(message, "Provided OpenAI key is invalid.")
-        return 
+        return
     encrypted_openai_key = encrypt_key(kms_client, kms_key_id, message.text)
     update_user_item(dynamodb_client, chat_id=message.chat.id, openai_key=encrypted_openai_key)
     bot.reply_to(message, "Your OpenAI key saved.")
@@ -115,18 +196,18 @@ def register_openai_user_key(message):
 # Handle '/get_transcript'
 @bot.message_handler(commands=['get_transcript'])
 def get_transcript(message):
-    bot.reply_to(message, "Please provide youtube video link for transcription.")
-    bot.register_next_step_handler_by_chat_id(message.chat.id, process_transcript)
+    bot.reply_to(message, "Choose video for transcription. If you want to transcribe another video, first add it in your library using /add_video command.")
+    return_videos_list_keyboard(message, process_transcript)
 
 
 def process_transcript(message):
-    url = message.text
-    try:
-        video_id = re.findall(youtube_video_id_regexp, url)[0]
-    except Exception as e:
-        bot.reply_to(message, f"Youtube video link could not be processed.\nError: {e}")
-        return
 
+    try:
+        pattern = r"\((.*?)\)"
+        video_id = re.findall(pattern, message.text)[-1]
+    except Exception as e:
+        bot.reply_to(message, f"Video could not be processed.\nError: {e}")
+        return
     title, author = retrieve_metadata(video_id)
 
     try:
@@ -143,25 +224,25 @@ def process_transcript(message):
             file_path = transcript_result
         upload_file_to_s3(s3_client, file_path, video_id)
 
-    update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
-    add_video_to_user(dynamodb_client, message.chat.id, video_id)
-
     doc = open(file_path, 'rb')
-    bot.send_message(message.chat.id, f"Title: {title}\nAuthor: {author}\nVideo transcript:")
+    markup = types.ReplyKeyboardRemove(selective=False)
+    title_esc = formatting.escape_markdown(title)
+    author_esc = formatting.escape_markdown(author)
+    msg = f"\"{title_esc}\" by {author_esc}\n*Video transcript:*"
+    bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode='MarkdownV2')
     bot.send_document(message.chat.id, doc)
 
 
-# Handle '/summarize_video'
-@bot.message_handler(commands=['summarize_video'])
+# Handle '/get_summary'
+@bot.message_handler(commands=['get_summary'])
 def summarize_video(message):
-    bot.reply_to(message, "Please provide youtube video link for summarization.")
-    bot.register_next_step_handler_by_chat_id(message.chat.id, process_summarization)
-
+    bot.reply_to(message, "Choose video for summarizing. If you want to summarize another video, first add it in your library using /add_video command.")
+    return_videos_list_keyboard(message, process_summarization)
 
 def process_summarization(message):
-    url = message.text
     try:
-        video_id = re.findall(youtube_video_id_regexp, url)[0]
+        pattern = r"\((.*?)\)"
+        video_id = re.findall(pattern, message.text)[-1]
     except Exception as e:
         bot.reply_to(message, f"Youtube video link could not be processed.\nError: {e}")
         return
@@ -193,15 +274,17 @@ def process_summarization(message):
         pdf_path = generate_summary_pdf(transcript, video_id)
         upload_file_to_s3(s3_client, pdf_path, video_id)
 
-    update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
-    add_video_to_user(dynamodb_client, message.chat.id, video_id)
-
     doc = open(pdf_path, 'rb')
+    markup = types.ReplyKeyboardRemove(selective=False)
+    title_esc = formatting.escape_markdown(title)
+    author_esc = formatting.escape_markdown(author)
+    msg = f"\"{title_esc}\" by {author_esc}\n*Video summary:*"
+    bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode='MarkdownV2')
     bot.send_document(message.chat.id, doc)
 
 
-# Handle '/ask_question'
-@bot.message_handler(commands=['ask_question'])
+# Handle '/start_chat'
+@bot.message_handler(commands=['start_chat'])
 def ask_question(message):
     bot.reply_to(message, "What is your question from the lecture?")
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_question)
@@ -234,10 +317,3 @@ def process_text(message):
         print(f"Couldn't connect to database.\nError: {e}")
         bot.reply_to(message, "You broke the bot.")
         return
-
-
-# Handle all other messages
-@bot.message_handler(func=lambda message: not re.match(youtube_video_id_regexp, message.text), content_types=['text'])
-def send_response_from_openapi(message):
-    response = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": message.text}])
-    bot.reply_to(message, response.choices[0].message.content)
