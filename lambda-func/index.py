@@ -64,8 +64,10 @@ def process_event(event):
 
 
 def handler(event, context):
+    print(event)
     # Process event from aws and respond
     process_event(event)
+    
     return {
         'statusCode': 200
     }
@@ -170,6 +172,18 @@ def process_add_video(message):
 
     update_video_item(dynamodb_client, video_id=video_id, title=title, author=author, url_link=url)
     add_video_to_user(dynamodb_client, message.chat.id, video_id)
+
+    file_path = generate_transcript(video_id)
+    with open(file_path, "r") as file:
+        transcript = file.read()
+        
+    try:
+        loop_ask = asyncio.get_event_loop()
+        response = loop_ask.run_until_complete(upsert(video_id, transcript))
+    except Exception as e:
+        print(f"Couldn't connect to database.\nError: {e}")
+        bot.reply_to(message, "You broke the bot.")
+        return
 
     bot.reply_to(message, "Video added to your library.")
 
@@ -286,34 +300,29 @@ def process_summarization(message):
 # Handle '/start_chat'
 @bot.message_handler(commands=['start_chat'])
 def ask_question(message):
+    bot.reply_to(message, "From which lecture do you want to ask?")
+    return_videos_list_keyboard(message, process_lecture_for_question)
+
+
+def process_lecture_for_question(message):
+    try:
+        pattern = r"\((.*?)\)"
+        video_id = re.findall(pattern, message.text)[-1]
+    except Exception as e:
+        bot.reply_to(message, f"Video could not be processed.\nError: {e}")
+        return
+    
     bot.reply_to(message, "What is your question from the lecture?")
-    bot.register_next_step_handler_by_chat_id(message.chat.id, process_question)
-
-
-def process_question(message):
-    try:
-        loop_ask = asyncio.get_event_loop()
-        response = loop_ask.run_until_complete(ask(message.text))
-        bot.reply_to(message, response)
-    except Exception as e:
-        print(f"Couldn't connect to database.\nError: {e}")
-        bot.reply_to(message, "You broke the bot.")
-        return
-
-
-# Handle '/upsert_text'
-@bot.message_handler(commands=['upsert_text'])
-def upsert_text(message):
-    bot.reply_to(message, "What text do you want to upsert?")
-    bot.register_next_step_handler_by_chat_id(message.chat.id, process_text)
-
-
-def process_text(message):
-    try:
-        loop_ask = asyncio.get_event_loop()
-        response = loop_ask.run_until_complete(upsert(message.text.split()[0], message.text))
-        bot.reply_to(message, "Text starting with: " + str(response) + " upserted")
-    except Exception as e:
-        print(f"Couldn't connect to database.\nError: {e}")
-        bot.reply_to(message, "You broke the bot.")
-        return
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_question, video_id=video_id)
+    
+    
+def process_question(message, **kwargs):
+    for key, value in kwargs.items():
+        try:
+            loop_ask = asyncio.get_event_loop()
+            response = loop_ask.run_until_complete(ask(message.text, value))
+            bot.reply_to(message, response)
+        except Exception as e:
+            print(f"Couldn't connect to database.\nError: {e}")
+            bot.reply_to(message, "You broke the bot.")
+            return

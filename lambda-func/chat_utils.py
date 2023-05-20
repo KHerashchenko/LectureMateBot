@@ -2,7 +2,7 @@ from typing import Any, List, Dict
 import openai
 import logging
 from datastore.factory import get_datastore
-from models.models import Query, Document, DocumentMetadata
+from models.models import Query, Document, DocumentMetadata, DocumentMetadataFilter
 import ntpath
 import asyncio
 
@@ -10,14 +10,16 @@ async def startup():
     global datastore
     datastore = await get_datastore()
 
-async def query_database(query_prompt: str) -> Dict[str, Any]:
+async def query_database(query_prompt: str, document_id: str) -> Dict[str, Any]:
     """
     Query vector database to retrieve chunk with user's input questions.
     """
     query = Query(
         query=query_prompt,
-        filter=None,
-        top_k=1,
+        filter= DocumentMetadataFilter(
+            document_id=document_id
+        ),
+        top_k=3,
     )
     
     queries = []
@@ -90,13 +92,13 @@ def call_chatgpt_api(user_question: str, chunks: List[str]) -> Dict[str, Any]:
     return response
 
 
-async def ask(user_question: str) -> Dict[str, Any]:
+async def ask(user_question: str, document_id: str) -> Dict[str, Any]:
     """
     Handle user's questions.
     """
     await startup()
     # Get chunks from database.
-    chunks_response = await query_database(user_question)
+    chunks_response = await query_database(user_question, document_id)
     chunks = []
     for result in chunks_response:
         for inner_result in result.results:
