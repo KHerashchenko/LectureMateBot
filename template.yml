@@ -61,6 +61,7 @@ Resources:
               Resource:
                 - !GetAtt VideosTable.Arn
                 - !GetAtt UsersTable.Arn
+                - !GetAtt NotesTable.Arn
 
   DataStorageBucket:
     Type: AWS::S3::Bucket
@@ -85,6 +86,17 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: video_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  NotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: note_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: note_id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
