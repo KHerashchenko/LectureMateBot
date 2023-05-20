@@ -161,6 +161,9 @@ def provide_openai_key(message):
 
 
 def process_add_video(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     url = message.text
     try:
         video_id = re.findall(youtube_video_id_regexp, url)[0]
@@ -196,6 +199,9 @@ def provide_openai_key(message):
 
 
 def register_openai_user_key(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     try:
         openai.api_key = message.text
         models = openai.Model.list()
@@ -215,7 +221,9 @@ def get_transcript(message):
 
 
 def process_transcript(message):
-
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     try:
         pattern = r"\((.*?)\)"
         video_id = re.findall(pattern, message.text)[-1]
@@ -254,6 +262,9 @@ def summarize_video(message):
     return_videos_list_keyboard(message, process_summarization)
 
 def process_summarization(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     try:
         pattern = r"\((.*?)\)"
         video_id = re.findall(pattern, message.text)[-1]
@@ -305,6 +316,9 @@ def ask_question(message):
 
 
 def process_lecture_for_question(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     try:
         pattern = r"\((.*?)\)"
         video_id = re.findall(pattern, message.text)[-1]
@@ -317,6 +331,9 @@ def process_lecture_for_question(message):
     
     
 def process_question(message, **kwargs):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
     for key, value in kwargs.items():
         try:
             loop_ask = asyncio.get_event_loop()
@@ -326,3 +343,13 @@ def process_question(message, **kwargs):
             print(f"Couldn't connect to database.\nError: {e}")
             bot.reply_to(message, "You broke the bot.")
             return
+
+# Handle '/exit'
+@bot.message_handler(commands=['exit'])
+def exit(message):
+    bot.reply_to(message, "You are currently not in a process you can't exit.")
+
+# Handle all other messages
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def send_response_from_openapi(message):
+    bot.reply_to(message, "Please use the buttons. If you need any help use /help.")
