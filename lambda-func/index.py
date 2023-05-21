@@ -101,11 +101,14 @@ Hi there! I'm LectureMate, your helpful bot. Here's how you can make the most ou
 
 📚 Library Commands:
 - /add_video: Add a YouTube video to your library.
+- /add_note: Add a Note to your library.
 - /show_my_library: View the list of videos in your library.
+- /show_my_notes: View the list of notes in your library.
 
 🎥 Video Commands:
 - /get_summary: Get a summary of a video from your library.
 - /get_transcript: Get the transcript of a video from your library.
+- /get_note: Get the note from your library.
 
 💬 Chat Commands:
 - /start_chat: Start a conversation about the content of a video from your library.
