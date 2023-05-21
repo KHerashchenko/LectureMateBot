@@ -34,6 +34,28 @@ def retrieve_user_videos(client, chat_id):
         user_videos.append(vid_info)
         
     return user_videos
+    
+    
+def retrieve_user_notes(client, chat_id):
+    notes_resp = client.get_item(
+        TableName=users_table,
+        Key={
+            'chat_id': {'N': str(chat_id)},
+        },
+        AttributesToGet=['notes']
+    )
+    if not notes_resp['Item']:
+        notes_list = []
+        return notes_list
+    else:
+        notes_list = notes_resp['Item']['notes']
+        
+    user_notes = []
+    for note in notes_list['L']:
+        note_name = note['S']
+        user_notes.append(note_name)
+
+    return user_notes
 
 
 def retrieve_user_openai_creds(client, chat_id):
@@ -73,7 +95,7 @@ def add_video_to_user(client, chat_id, video_id):
         )
         print(data)
 
-        videos_list = []
+        videos_list = data
     else:
         videos_list = videos_resp['Item']['videos']
 
@@ -93,6 +115,50 @@ def add_video_to_user(client, chat_id, video_id):
 
     return 1
 
+
+def add_note_to_user(client, chat_id, file_name):
+    """Adds file_name into notes list if it is not there yet."""
+    notes_resp = client.get_item(
+        TableName=users_table,
+        Key={
+            'chat_id': {'N': str(chat_id)},
+        },
+        AttributesToGet=['notes']
+    )
+    if not notes_resp['Item']:
+        data = client.update_item(
+            TableName=users_table,
+            Key={
+                'chat_id': {'N': str(chat_id)},
+            },
+            UpdateExpression = f"SET notes = :i",
+            ExpressionAttributeValues={
+                ':i': {'L': []},
+            },
+            ReturnValues="UPDATED_NEW"
+        )
+        print(data)
+
+        notes_list = data
+    else:
+        notes_list = notes_resp['Item']['notes']
+
+
+    if {'S': file_name} not in notes_list['L']:
+        data = client.update_item(
+            TableName=users_table,
+            Key={
+                'chat_id': {'N': str(chat_id)},
+            },
+            UpdateExpression="SET notes = list_append(notes, :i)",
+            ExpressionAttributeValues={
+                ':i': {'L': [{'S': file_name}]}
+            },
+            ReturnValues="UPDATED_NEW"
+        )
+        print(data)
+
+    return 1
 
 def update_user_item(client, chat_id, **kwargs):
     for key, value in kwargs.items():

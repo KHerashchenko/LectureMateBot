@@ -5,11 +5,12 @@ from telebot import types, formatting
 import re
 import openai
 import asyncio
+import os
 from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
 from youtube_video_handler import generate_transcript, retrieve_metadata
 from user_creds_handler import encrypt_key, decrypt_key
 from s3_storage_handler import upload_file_to_s3, download_file_from_s3
-from dynamodb_handler import update_video_item, update_user_item, add_video_to_user, retrieve_user_openai_creds, retrieve_user_videos
+from dynamodb_handler import update_video_item, update_user_item, add_video_to_user, retrieve_user_openai_creds, retrieve_user_videos, add_note_to_user, retrieve_user_notes
 from summary import generate_summary_pdf
 from chat_utils import ask, upsert
 
@@ -137,6 +138,20 @@ def return_videos_list_keyboard(message, next_step_func):
     bot.register_next_step_handler_by_chat_id(message.chat.id, next_step_func)
 
 
+def return_notes_list_keyboard(message, next_step_func):
+    user_notes = retrieve_user_notes(dynamodb_client, message.chat.id)
+    if not user_notes:
+        bot.reply_to(message, "You haven't added any note yet. Please call /add_note first.")
+        return
+
+    markup = types.ReplyKeyboardMarkup()
+    for note in user_notes:
+        itembtn = types.KeyboardButton(note)
+        markup.row(itembtn)
+    bot.send_message(message.chat.id, "List of your notes:", reply_markup=markup)
+    # Set the next step handler to handle the user's selection
+    bot.register_next_step_handler_by_chat_id(message.chat.id, next_step_func)
+
 # Handle '/show_my_library'
 @bot.message_handler(commands=['show_my_library'])
 def send_list_my_videos(message):
@@ -151,6 +166,20 @@ def send_list_my_videos(message):
             video_info = f"[URL]({vid_dict['url_link']}) \"{title}\" by {author}\n"
             rendered_user_videos += video_info
         bot.send_message(message.chat.id, rendered_user_videos, parse_mode='MarkdownV2')
+        
+# Handle '/show_my_notes'
+@bot.message_handler(commands=['show_my_notes'])
+def send_list_my_notes(message):
+    user_notes = retrieve_user_notes(dynamodb_client, message.chat.id)
+    if not user_notes:
+        bot.reply_to(message, "You haven't uploaded any note yet.")
+    else:
+        rendered_user_notes = "List of notes you have provided earlier:\n\n"
+        for note in user_notes:
+            note = note.replace('.', '\.')
+            note_info = f"[{note}]\n"
+            rendered_user_notes += note_info
+        bot.send_message(message.chat.id, rendered_user_notes, parse_mode='MarkdownV2')
 
 
 # Handle '/add_video'
@@ -211,6 +240,31 @@ def register_openai_user_key(message):
     encrypted_openai_key = encrypt_key(kms_client, kms_key_id, message.text)
     update_user_item(dynamodb_client, chat_id=message.chat.id, openai_key=encrypted_openai_key)
     bot.reply_to(message, "Your OpenAI key saved.")
+
+
+# Handle '/get_note'
+@bot.message_handler(commands=['get_note'])
+def get_note(message):
+    bot.reply_to(message, "Choose note to download.")
+    return_notes_list_keyboard(message, process_get_note)
+
+def process_get_note(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
+
+    try:
+        file_path = download_file_from_s3(s3_client, message.chat.id, message.text)
+        print(f'File {message.text} found in bucket. Skip generating.')
+    except Exception as e:
+        bot.reply_to(message, "Note not found")
+
+    doc = open(file_path, 'rb')
+    markup = types.ReplyKeyboardRemove(selective=False)
+    msg = f" Selected note:"
+    bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode='MarkdownV2')
+    bot.send_document(message.chat.id, doc)
+
 
 
 # Handle '/get_transcript'
@@ -343,6 +397,29 @@ def process_question(message, **kwargs):
             print(f"Couldn't connect to database.\nError: {e}")
             bot.reply_to(message, "You broke the bot.")
             return
+    
+#Handle /add_note
+@bot.message_handler(commands=['add_note'])
+def add_note(message):
+    bot.reply_to(message, "Choose a note to upload.")
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_add_note)
+
+def process_add_note(message):
+    if message.text == "/exit":
+        bot.reply_to(message, "You exited the current process, start a new one.")
+        return
+    file_name = message.document.file_name
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    file_path = f'/tmp/' + file_name
+    with open(file_path, 'wb') as new_file:
+        new_file.write(downloaded_file)
+    if os.path.isfile(file_path):
+        upload_file_to_s3(s3_client, file_path, message.chat.id)
+        add_note_to_user(dynamodb_client, message.chat.id, file_name)
+        bot.reply_to(message, "Note succesfully uploaded.")
+    else:
+        bot.reply_to(message, "You broke the bot.")
 
 # Handle '/exit'
 @bot.message_handler(commands=['exit'])
@@ -353,3 +430,5 @@ def exit(message):
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def send_response_from_openapi(message):
     bot.reply_to(message, "Please use the buttons. If you need any help use /help.")
+    
+
