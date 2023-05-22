@@ -169,7 +169,8 @@ def send_list_my_videos(message):
             video_info = f"[URL]({vid_dict['url_link']}) \"{title}\" by {author}\n"
             rendered_user_videos += video_info
         bot.send_message(message.chat.id, rendered_user_videos, parse_mode='MarkdownV2')
-        
+
+
 # Handle '/show_my_notes'
 @bot.message_handler(commands=['show_my_notes'])
 def send_list_my_notes(message):
@@ -177,10 +178,10 @@ def send_list_my_notes(message):
     if not user_notes:
         bot.reply_to(message, "You haven't uploaded any note yet.")
     else:
-        rendered_user_notes = "List of notes you have provided earlier:\n\n"
+        rendered_user_notes = "*List of notes you have provided earlier:*\n\n"
         for note in user_notes:
-            note = note.replace('.', '\.')
-            note_info = f"[{note}]\n"
+            note_esc = formatting.escape_markdown(note)
+            note_info = f"  `- {note_esc}\n`"
             rendered_user_notes += note_info
         bot.send_message(message.chat.id, rendered_user_notes, parse_mode='MarkdownV2')
 
@@ -251,13 +252,14 @@ def get_note(message):
     bot.reply_to(message, "Choose note to download.")
     return_notes_list_keyboard(message, process_get_note)
 
+
 def process_get_note(message):
     if message.text == "/exit":
         bot.reply_to(message, "You exited the current process, start a new one.")
         return
 
     try:
-        file_path = download_file_from_s3(s3_client, message.chat.id, message.text)
+        file_path = download_file_from_s3(s3_client, message.chat.id, message.text, 'users')
         print(f'File {message.text} found in bucket. Skip generating.')
     except Exception as e:
         bot.reply_to(message, "Note not found")
@@ -267,7 +269,6 @@ def process_get_note(message):
     msg = f" Selected note:"
     bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode='MarkdownV2')
     bot.send_document(message.chat.id, doc)
-
 
 
 # Handle '/get_transcript'
@@ -290,7 +291,7 @@ def process_transcript(message):
     title, author = retrieve_metadata(video_id)
 
     try:
-        file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt')
+        file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt', 'videos')
         print(f'File transcript_{video_id}.txt found in bucket. Skip generating.')
     except Exception as e:
         print(e)
@@ -301,7 +302,7 @@ def process_transcript(message):
             return
         else:
             file_path = transcript_result
-        upload_file_to_s3(s3_client, file_path, video_id)
+        upload_file_to_s3(s3_client, file_path, video_id, 'videos')
 
     doc = open(file_path, 'rb')
     markup = types.ReplyKeyboardRemove(selective=False)
@@ -318,6 +319,7 @@ def summarize_video(message):
     bot.reply_to(message, "Choose video for summarizing. If you want to summarize another video, first add it in your library using /add_video command.")
     return_videos_list_keyboard(message, process_summarization)
 
+
 def process_summarization(message):
     if message.text == "/exit":
         bot.reply_to(message, "You exited the current process, start a new one.")
@@ -332,12 +334,12 @@ def process_summarization(message):
     title, author = retrieve_metadata(video_id)
 
     try:
-        pdf_path = download_file_from_s3(s3_client, video_id, f'summary_{video_id}.pdf')
+        pdf_path = download_file_from_s3(s3_client, video_id, f'summary_{video_id}.pdf', 'videos')
         print(f'File summary_{video_id}.pdf found in bucket. Skip generating.')
     except Exception as e:
         print(f'No file summary_{video_id}.pdf found in bucket. Start generating.')
         try:
-            file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt')
+            file_path = download_file_from_s3(s3_client, video_id, f'transcript_{video_id}.txt', 'videos')
         except Exception as e:
             print(e)
             print(f'No file transcript_{video_id}.txt found in bucket. Start generating.')
@@ -347,14 +349,14 @@ def process_summarization(message):
                 return
             else:
                 file_path = transcript_result
-            upload_file_to_s3(s3_client, file_path, video_id)
+            upload_file_to_s3(s3_client, file_path, video_id, 'videos')
 
         print('START PDF SUMMARY')
         bot.send_message(message.chat.id, f"Summarization may take some time, please bear with us.")
         with open(file_path, "r") as file:
             transcript = file.read()
         pdf_path = generate_summary_pdf(transcript, video_id)
-        upload_file_to_s3(s3_client, pdf_path, video_id)
+        upload_file_to_s3(s3_client, pdf_path, video_id, 'videos')
 
     doc = open(pdf_path, 'rb')
     markup = types.ReplyKeyboardRemove(selective=False)
@@ -382,8 +384,9 @@ def process_lecture_for_question(message):
     except Exception as e:
         bot.reply_to(message, f"Video could not be processed.\nError: {e}")
         return
-    
-    bot.reply_to(message, "What is your question from the lecture?")
+
+    markup = types.ReplyKeyboardRemove(selective=False)
+    bot.reply_to(message, "What is your question from the lecture?", reply_markup=markup)
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_question, video_id=video_id)
     
     
@@ -400,12 +403,14 @@ def process_question(message, **kwargs):
             print(f"Couldn't connect to database.\nError: {e}")
             bot.reply_to(message, "You broke the bot.")
             return
-    
-#Handle /add_note
+
+
+# Handle /add_note
 @bot.message_handler(commands=['add_note'])
 def add_note(message):
     bot.reply_to(message, "Choose a note to upload.")
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_add_note)
+
 
 def process_add_note(message):
     if message.text == "/exit":
@@ -418,16 +423,18 @@ def process_add_note(message):
     with open(file_path, 'wb') as new_file:
         new_file.write(downloaded_file)
     if os.path.isfile(file_path):
-        upload_file_to_s3(s3_client, file_path, message.chat.id)
+        upload_file_to_s3(s3_client, file_path, message.chat.id, 'users')
         add_note_to_user(dynamodb_client, message.chat.id, file_name)
         bot.reply_to(message, "Note succesfully uploaded.")
     else:
         bot.reply_to(message, "You broke the bot.")
 
+
 # Handle '/exit'
 @bot.message_handler(commands=['exit'])
 def exit(message):
     bot.reply_to(message, "You are currently not in a process you can't exit.")
+
 
 # Handle all other messages
 @bot.message_handler(func=lambda message: True, content_types=['text'])
