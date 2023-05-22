@@ -65,10 +65,9 @@ def process_event(event):
 
 
 def handler(event, context):
-    print(event)
     # Process event from aws and respond
     process_event(event)
-    
+
     return {
         'statusCode': 200
     }
@@ -212,7 +211,7 @@ def process_add_video(message):
     file_path = generate_transcript(video_id)
     with open(file_path, "r") as file:
         transcript = file.read()
-        
+
     try:
         loop_ask = asyncio.get_event_loop()
         response = loop_ask.run_until_complete(upsert(video_id, transcript))
@@ -352,7 +351,8 @@ def process_summarization(message):
             upload_file_to_s3(s3_client, file_path, video_id, 'videos')
 
         print('START PDF SUMMARY')
-        bot.send_message(message.chat.id, f"Summarization may take some time, please bear with us.")
+        markup = types.ReplyKeyboardRemove(selective=False)
+        bot.send_message(message.chat.id, f"Summarization may take some time, please bear with us.", reply_markup=markup)
         with open(file_path, "r") as file:
             transcript = file.read()
         pdf_path = generate_summary_pdf(transcript, video_id)
@@ -388,8 +388,8 @@ def process_lecture_for_question(message):
     markup = types.ReplyKeyboardRemove(selective=False)
     bot.reply_to(message, "What is your question from the lecture?", reply_markup=markup)
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_question, video_id=video_id)
-    
-    
+
+
 def process_question(message, **kwargs):
     if message.text == "/exit":
         bot.reply_to(message, "You exited the current process, start a new one.")
@@ -434,11 +434,3 @@ def process_add_note(message):
 @bot.message_handler(commands=['exit'])
 def exit(message):
     bot.reply_to(message, "You are currently not in a process you can't exit.")
-
-
-# Handle all other messages
-@bot.message_handler(func=lambda message: True, content_types=['text'])
-def send_response_from_openapi(message):
-    bot.reply_to(message, "Please use the buttons. If you need any help use /help.")
-    
-
