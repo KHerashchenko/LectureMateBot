@@ -399,6 +399,7 @@ def process_question(message, **kwargs):
             loop_ask = asyncio.get_event_loop()
             response = loop_ask.run_until_complete(ask(message.text, value))
             bot.reply_to(message, response)
+            bot.register_next_step_handler_by_chat_id(message.chat.id, process_question, **kwargs)
         except Exception as e:
             print(f"Couldn't connect to database.\nError: {e}")
             bot.reply_to(message, "You broke the bot.")
