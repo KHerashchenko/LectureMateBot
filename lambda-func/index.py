@@ -41,7 +41,8 @@ def process_event(event):
     request_body_dict = json.loads(event['body'])
     # Parse updates from json
     update = telebot.types.Update.de_json(request_body_dict)
-
+    
+    message_type = None
     if('message' in request_body_dict):
         message_type = 'message'
     elif('edited_message' in request_body_dict):
@@ -49,6 +50,8 @@ def process_event(event):
 
     print(request_body_dict)
     try:
+        if message_type == None:
+            return
         update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
     except:
         update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'])
@@ -65,6 +68,7 @@ def process_event(event):
 
 
 def handler(event, context):
+    print(event)
     # Process event from aws and respond
     process_event(event)
 
@@ -435,3 +439,8 @@ def process_add_note(message):
 @bot.message_handler(commands=['exit'])
 def exit(message):
     bot.reply_to(message, "You are currently not in a process you can't exit.")
+
+# Handle other text
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def default_command(message):
+    bot.reply_to(message, "Please use the commands from the menu.")

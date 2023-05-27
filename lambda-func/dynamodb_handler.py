@@ -12,7 +12,7 @@ def retrieve_user_videos(client, chat_id):
         },
         AttributesToGet=['videos']
     )
-    if not videos_resp['Item']:
+    if 'Item' not in videos_resp:
         videos_list = []
         return videos_list
     else:
@@ -44,7 +44,7 @@ def retrieve_user_notes(client, chat_id):
         },
         AttributesToGet=['notes']
     )
-    if not notes_resp['Item']:
+    if 'Item' not in notes_resp:
         notes_list = []
         return notes_list
     else:
@@ -66,7 +66,8 @@ def retrieve_user_openai_creds(client, chat_id):
         },
         AttributesToGet=['openai_key']
     )
-    if not openai_key_resp['Item']:
+
+    if 'Item' not in openai_key_resp:
         return None
     else:
         return openai_key_resp['Item']['openai_key']['S']
@@ -125,7 +126,7 @@ def add_note_to_user(client, chat_id, file_name):
         },
         AttributesToGet=['notes']
     )
-    if not notes_resp['Item']:
+    if 'Item' not in notes_resp:
         data = client.update_item(
             TableName=users_table,
             Key={
