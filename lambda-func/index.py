@@ -441,6 +441,6 @@ def exit(message):
     bot.reply_to(message, "You are currently not in a process you can't exit.")
 
 # Handle other text
-@bot.message_handler(func=lambda message: True, content_types=['text'])
-def default_command(message):
-    bot.reply_to(message, "Please use the commands from the menu.")
+#@bot.message_handler(func=lambda message: True, content_types=['text'])
+#def default_command(message):
+#    bot.reply_to(message, "Please use the commands from the menu.")

@@ -12,7 +12,7 @@ def retrieve_user_videos(client, chat_id):
         },
         AttributesToGet=['videos']
     )
-    if 'Item' not in videos_resp:
+    if 'Item' not in videos_resp or not videos_resp['Item']:
         videos_list = []
         return videos_list
     else:
@@ -44,7 +44,7 @@ def retrieve_user_notes(client, chat_id):
         },
         AttributesToGet=['notes']
     )
-    if 'Item' not in notes_resp:
+    if 'Item' not in notes_resp or not notes_resp['Item']:
         notes_list = []
         return notes_list
     else:
@@ -67,7 +67,7 @@ def retrieve_user_openai_creds(client, chat_id):
         AttributesToGet=['openai_key']
     )
 
-    if 'Item' not in openai_key_resp:
+    if 'Item' not in openai_key_resp or not openai_key_resp['Item']:
         return None
     else:
         return openai_key_resp['Item']['openai_key']['S']
@@ -82,7 +82,7 @@ def add_video_to_user(client, chat_id, video_id):
         },
         AttributesToGet=['videos']
     )
-    if not videos_resp['Item']:
+    if not videos_resp['Item'] or not videos_resp['Item']:
         data = client.update_item(
             TableName=users_table,
             Key={
@@ -126,7 +126,7 @@ def add_note_to_user(client, chat_id, file_name):
         },
         AttributesToGet=['notes']
     )
-    if 'Item' not in notes_resp:
+    if 'Item' not in notes_resp or not notes_resp['Item']:
         data = client.update_item(
             TableName=users_table,
             Key={
@@ -162,6 +162,14 @@ def add_note_to_user(client, chat_id, file_name):
     return 1
 
 def update_user_item(client, chat_id, **kwargs):
+    if 'username' not in kwargs:
+        data = client.update_item(
+            TableName=users_table,
+            Key={
+                'chat_id': {'N': str(chat_id)},
+            },
+            ReturnValues="UPDATED_NEW"
+        )
     for key, value in kwargs.items():
         data = client.update_item(
             TableName=users_table,
