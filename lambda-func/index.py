@@ -37,34 +37,37 @@ bot = telebot.TeleBot(tg_bot_secret, threaded=False)
 
 
 def process_event(event):
-    # Get telegram webhook json from event
-    request_body_dict = json.loads(event['body'])
-    # Parse updates from json
-    update = telebot.types.Update.de_json(request_body_dict)
-    
-    message_type = None
-    if('message' in request_body_dict):
-        message_type = 'message'
-    elif('edited_message' in request_body_dict):
-        message_type = 'edited_message'
-
-    print(request_body_dict)
     try:
-        if message_type == None:
-            return
-        update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
+        # Get telegram webhook json from event
+        request_body_dict = json.loads(event['body'])
+        # Parse updates from json
+        update = telebot.types.Update.de_json(request_body_dict)
+        
+        message_type = None
+        if('message' in request_body_dict):
+            message_type = 'message'
+        elif('edited_message' in request_body_dict):
+            message_type = 'edited_message'
+    
+        print(request_body_dict)
+        try:
+            if message_type == None:
+                return
+            update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'], username=request_body_dict[message_type]['chat']['username'])
+        except:
+            update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'])
+        encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
+    
+        if encrypted_openai_creds:
+            openai_creds = decrypt_key(kms_client, kms_key_id, encrypted_openai_creds)
+        else:
+            openai_creds = default_openai_key
+        openai.api_key = openai_creds
+    
+        # Run handlers and etc for updates
+        bot.process_new_updates([update])
     except:
-        update_user_item(dynamodb_client, chat_id=request_body_dict[message_type]['chat']['id'])
-    encrypted_openai_creds = retrieve_user_openai_creds(dynamodb_client, request_body_dict[message_type]['chat']['id'])
-
-    if encrypted_openai_creds:
-        openai_creds = decrypt_key(kms_client, kms_key_id, encrypted_openai_creds)
-    else:
-        openai_creds = default_openai_key
-    openai.api_key = openai_creds
-
-    # Run handlers and etc for updates
-    bot.process_new_updates([update])
+        print("Message from old bot")
 
 
 def handler(event, context):
