@@ -23,11 +23,13 @@ Resources:
         Variables:
           VIDEOS_NAME: !Ref VideosTable
           USERS_NAME: !Ref UsersTable
+          NOTES_NAME: !Ref NotesTable
           BUCKET_NAME: !Ref DataStorageBucket
       CodeUri: lambda-func/
       Handler: index.handler
       Runtime: python3.9
       Timeout: 60
+      MemorySize: 512
       Layers:
         - !Ref PythonBaseLayer
       Role:
