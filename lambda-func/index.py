@@ -15,7 +15,7 @@ from summary import generate_summary_pdf
 from chat_utils import ask, upsert
 
 
-tg_bot_token_secret_name = "TelegramBotToken"
+tg_bot_token_secret_name = os.environ['TG_TOKEN_NM']
 openai_key_secret_name = "OpenAISecretKey"
 region_name = "eu-north-1"
 kms_key_id = 'da85dd30-85cc-4a75-986f-b62fefb4a55b'
@@ -66,8 +66,8 @@ def process_event(event):
     
         # Run handlers and etc for updates
         bot.process_new_updates([update])
-    except:
-        print("Message from old bot")
+    except Exception as e:
+        print(e)
 
 
 def handler(event, context):
