@@ -14,6 +14,9 @@ Parameters:
     Type: String
     Description: The name for a project pipeline stage, such as Staging or Prod, for which resources are provisioned and deployed.
     Default: ''
+  TGToken:
+    Type: String
+    Description: Environment variable value for TG_TOKEN_NM
 
 Resources:
   BotAPIFunction:
@@ -25,6 +28,7 @@ Resources:
           USERS_NAME: !Ref UsersTable
           NOTES_NAME: !Ref NotesTable
           BUCKET_NAME: !Ref DataStorageBucket
+          TG_TOKEN_NM: !Ref TGToken
       CodeUri: lambda-func/
       Handler: index.handler
       Runtime: python3.9
