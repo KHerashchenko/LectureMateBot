@@ -32,7 +32,7 @@ Resources:
       CodeUri: lambda-func/
       Handler: index.handler
       Runtime: python3.9
-      Timeout: 60
+      Timeout: 900
       MemorySize: 512
       Layers:
         - !Ref PythonBaseLayer
