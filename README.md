@@ -18,8 +18,4 @@ __Justification for each resource used in the project:__
 - CodeStar: Employed for continuous integration and continuous delivery, streamlining development and ensuring a smooth user experience.
 - Pinecone: Leveraged as the vector database to store and process data for efficient AI-powered operations.
 
-AWS CloudWatch: Employed for monitoring and logging, aiding in identifying and addressing potential issues promptly.
-
-GitHub: Used as the version control system to track and manage the codebase, ensuring a collaborative and organized development process.
-
 ![new-designer](https://github.com/KHerashchenko/LectureMateBot/assets/43710814/e168efdb-99c4-46ab-b016-9b32a41e32c6)
